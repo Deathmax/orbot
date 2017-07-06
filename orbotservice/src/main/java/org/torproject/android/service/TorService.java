@@ -634,7 +634,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         
         TorResourceInstaller installer = new TorResourceInstaller(this, appBinHome);
         
-        if (version == null || (!version.equals(BINARY_TOR_VERSION)) || (!fileTor.exists()))
+//        if (version == null || (!version.equals(BINARY_TOR_VERSION)) || (!fileTor.exists()))
         {
             logNotice("upgrading binaries to latest version: " + BINARY_TOR_VERSION);
             
@@ -704,7 +704,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         if (Prefs.useDebugLogging())
         {
         	extraLines.append("Log debug syslog").append('\n');    
-        	extraLines.append("Log info syslog").append('\n');
+        	//extraLines.append("Log info syslog").append('\n');
         	extraLines.append("SafeLogging 0").append('\n');   
 
         }
