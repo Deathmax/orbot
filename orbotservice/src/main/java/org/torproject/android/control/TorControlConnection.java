@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.concurrent.CancellationException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** A connection to a running Tor process as specified in control-spec.txt. */
 public class TorControlConnection implements TorControlCommands {
@@ -203,46 +205,95 @@ public class TorControlConnection implements TorControlCommands {
         if (handler == null)
             return;
 
-        for (Iterator<ReplyLine> i = events.iterator(); i.hasNext(); ) {
-            ReplyLine line = i.next();
+        for (ReplyLine line : events) {
             int idx = line.msg.indexOf(' ');
             String tp = line.msg.substring(0, idx).toUpperCase();
-            String rest = line.msg.substring(idx+1);
-            if (tp.equals("CIRC")) {
-                List<String> lst = Bytes.splitStr(null, rest);
-                handler.circuitStatus(lst.get(1),
-                                      lst.get(0),
-                                      lst.get(1).equals("LAUNCHED")
-                                          || lst.size() < 3 ? ""
-                                          : lst.get(2));
-            } else if (tp.equals("STREAM")) {
-                List<String> lst = Bytes.splitStr(null, rest);
-                handler.streamStatus(lst.get(1),
-                                     lst.get(0),
-                                     lst.get(3));
-                // XXXX circID.
-            } else if (tp.equals("ORCONN")) {
-                List<String> lst = Bytes.splitStr(null, rest);
-                handler.orConnStatus(lst.get(1), lst.get(0));
-            } else if (tp.equals("BW")) {
-                List<String> lst = Bytes.splitStr(null, rest);
-                handler.bandwidthUsed(Integer.parseInt(lst.get(0)),
-                                      Integer.parseInt(lst.get(1)));
-            } else if (tp.equals("NEWDESC")) {
-                List<String> lst = Bytes.splitStr(null, rest);
-                handler.newDescriptors(lst);
-            } else if (tp.equals("DEBUG") ||
-                       tp.equals("INFO") ||
-                       tp.equals("NOTICE") ||
-                       tp.equals("WARN") ||
-                       tp.equals("ERR")) {
-                handler.message(tp, rest);
-            } else {
-                handler.unrecognized(tp, rest);
+            String rest = line.msg.substring(idx + 1);
+            switch (tp) {
+                case "CIRC": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    Map<String, String> args = getKeywordedArgs(line.msg);
+                    handler.circuitStatus(lst.get(1),
+                            lst.get(0),
+                            lst.get(1).equals("LAUNCHED")
+                                    || lst.size() < 3 ? ""
+                                    : lst.get(2),
+                            args.containsKey("PURPOSE") ?
+                                    args.get("PURPOSE") : "");
+                    break;
+                }
+                case "CIRC_MINOR": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    Map<String, String> args = getKeywordedArgs(line.msg);
+                    handler.circuitMinorStatus(lst.get(1),
+                            lst.get(0),
+                            args.containsKey("PURPOSE") ?
+                                    args.get("PURPOSE") : "");
+                    break;
+                }
+                case "STREAM": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    handler.streamStatus(lst.get(1),
+                            lst.get(0),
+                            lst.get(3));
+                    // XXXX circID.
+                    break;
+                }
+                case "ORCONN": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    handler.orConnStatus(lst.get(1), lst.get(0));
+                    break;
+                }
+                case "BW": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    handler.bandwidthUsed(Integer.parseInt(lst.get(0)),
+                            Integer.parseInt(lst.get(1)));
+                    break;
+                }
+                case "NEWDESC": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    handler.newDescriptors(lst);
+                    break;
+                }
+                case "DEBUG":
+                case "INFO":
+                case "NOTICE":
+                case "WARN":
+                case "ERR":
+                    handler.message(tp, rest);
+                    break;
+                case "STATUS_WORK": {
+                    List<String> lst = Bytes.splitStr(null, rest);
+                    handler.workStatus(lst.get(0).equalsIgnoreCase("TRUE"));
+                    break;
+                }
+                default:
+                    handler.unrecognized(tp, rest);
+                    break;
             }
         }
     }
 
+    private Map<String, String> getKeywordedArgs(String content) {
+        Pattern quotedKwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=\"(.*)\"$");
+        Pattern kwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=(\\S*)$");
+        Map<String, String> keywordArgs = new HashMap<>();
+        while (true) {
+            // First try to match quoted args
+            Matcher m = quotedKwArg.matcher(content);
+            if (!m.find())
+                // If quoted args fail, try without quotes
+                m = kwArg.matcher(content);
+
+            if (m.find()) {
+                content = m.group(0);
+                keywordArgs.put(m.group(1), m.group(2));
+            } else {
+                break;
+            }
+        }
+        return keywordArgs;
+    }
 
     /** Sets <b>w</b> as the PrintWriter for debugging output, 
     * which writes out all messages passed between Tor and the controller.  
@@ -312,14 +363,12 @@ public class TorControlConnection implements TorControlCommands {
                 handleEvent(lst);
             else {
                 synchronized (waiters) {
- 		if (!waiters.isEmpty())
-		{
-                    Waiter w;
-                    w = waiters.removeFirst();
-                    w.setResponse(lst);
-		}
-                }		
-
+                    if (!waiters.isEmpty()) {
+                        Waiter w;
+                        w = waiters.removeFirst();
+                        w.setResponse(lst);
+                    }
+                }
             }
         }
     }
@@ -727,6 +776,20 @@ public class TorControlConnection implements TorControlCommands {
     public void closeCircuit(String circID, boolean ifUnused) throws IOException {
         sendAndWaitForResponse("CLOSECIRCUIT "+circID+
                                (ifUnused?" IFUNUSED":"")+"\r\n", null);
+    }
+
+    /** Tells Tor to exit when this control connection is closed. This command
+     * was added in Tor 0.2.2.28-beta.
+     */
+    public void takeOwnership() throws IOException {
+        sendAndWaitForResponse("TAKEOWNERSHIP\r\n", null);
+    }
+
+    /** Tells Tor to forget any cached client state relating to the hidden
+     * service with the given hostname (excluding the .onion extension).
+     */
+    public void forgetHiddenService(String hostname) throws IOException {
+        sendAndWaitForResponse("FORGETHS " + hostname + "\r\n", null);
     }
 }
 

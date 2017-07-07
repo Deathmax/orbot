@@ -7,12 +7,14 @@ package org.torproject.android.control;
  * when you only want to override one method.
  */
 public class NullEventHandler implements EventHandler {
-    public void circuitStatus(String status, String circID, String path) {}
+    public void circuitStatus(String status, String circID, String path, String purpose) {}
+    public void circuitMinorStatus(String event, String circID, String purpose) {}
     public void streamStatus(String status, String streamID, String target) {}
     public void orConnStatus(String status, String orName) {}
     public void bandwidthUsed(long read, long written) {}
     public void newDescriptors(java.util.List<String> orList) {}
     public void message(String severity, String msg) {}
+    public void workStatus(boolean status) {}
     public void unrecognized(String type, String msg) {}
 }
 

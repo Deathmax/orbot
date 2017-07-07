@@ -21,9 +21,22 @@ public interface EventHandler {
      *	</ul>
      * 
      * <b>circID</b> is the alphanumeric identifier of the affected circuit,
-     * and <b>path</b> is a comma-separated list of alphanumeric ServerIDs.
+     * <b>path</b> is a comma-separated list of alphanumeric ServerIDs, and
+     * <b>purpose</b> is the purpose of the circuit.
      */
-    public void circuitStatus(String status, String circID, String path);
+    public void circuitStatus(String status, String circID, String path, String purpose);
+    /**
+     * Invoked when a circuit's status has changed slightly
+     * Possible values for <b>event</b> are:
+     * <ul>
+     *   <li>"PURPOSE_CHANGED" :  circuit purpose or HS-related state changed</li>
+     *   <li>"CANNIBALIZED"    :  circuit cannibalized</li>
+     *	</ul>
+     *
+     * <b>circID</b> is the alphanumeric identifier of the affected circuit, and
+     * <b>purpose</b> is the purpose of the circuit.
+     */
+    public void circuitMinorStatus(String event, String circID, String purpose);
     /**
      * Invoked when a stream's status has changed.
      * Possible values for <b>status</b> are:
@@ -65,6 +78,11 @@ public interface EventHandler {
      * and <b>msg</b> is the message string.
      */
     public void message(String severity, String msg);
+    /**
+     * Invoked when the work status of Tor changes.
+     * <b>status</b> is true if Tor doesn't want to sleep at the moment.
+     */
+    public void workStatus(boolean status);
     /**
      * Invoked when an unspecified message is received.
      * <type> is the message type, and <msg> is the message string.
