@@ -38,8 +38,15 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
     private NumberFormat mNumberFormat = null;
 
 
-    private HashMap<String,Node> hmBuiltNodes = new HashMap<String,Node>();
+    private HashMap<String,Node> hmBuiltNodes = new HashMap<>();
+    private HashMap<String, Circuit> hmBuiltCircuits = new HashMap<>();
 
+    public class Circuit {
+        String status;
+        String id;
+        String path;
+        String purpose;
+    }
     public class Node
     {
         String status;
@@ -54,6 +61,8 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
     {
         return hmBuiltNodes;
     }
+
+    public HashMap<String, Circuit> getCircuits() {return hmBuiltCircuits;}
 
     public TorEventHandler (TorService service)
     {
@@ -137,6 +146,16 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         mService.sendCallbackBandwidth(lastWritten, lastRead, mTotalTrafficWritten, mTotalTrafficRead);
     }
 
+    @Override
+    public void workStatus(boolean status) {
+        mService.debug("workStatus: " + status);
+        if (status) {
+            mService.holdWakeLock();
+        } else {
+            mService.releaseWakeLock();
+        }
+    }
+
     private String formatCount(long count) {
         // Converts the supplied argument into a string.
 
@@ -153,7 +172,8 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         //return count+" kB";
     }
 
-    public void circuitStatus(String status, String circID, String path) {
+    @Override
+    public void circuitStatus(String status, String circID, String path, String purpose) {
 
         /* once the first circuit is complete, then announce that Orbot is on*/
         if (mService.getCurrentStatus() == STATUS_STARTING && TextUtils.equals(status, "BUILT"))
@@ -163,6 +183,9 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         sb.append("Circuit (");
         sb.append((circID));
         sb.append(") ");
+        sb.append("[");
+        sb.append(purpose);
+        sb.append("] ");
         sb.append(status);
         sb.append(": ");
 
@@ -225,6 +248,40 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
             }
         }
 
+        if (mService.isHasHiddenServices()) {
+            Circuit circ = new Circuit();
+            circ.id = circID;
+            circ.status = status;
+            circ.path = path;
+            circ.purpose = purpose;
+
+            if (status.equals("BUILT")) {
+                hmBuiltCircuits.put(circID, circ);
+            } else if (status.equals("CLOSED")) {
+                hmBuiltCircuits.remove(circID);
+            }
+
+            mService.checkIfWakelockRequired();
+        }
+    }
+
+    @Override
+    public void circuitMinorStatus(String event, String circID, String purpose) {
+        if (!mService.isHasHiddenServices())
+            return;
+
+        hmBuiltCircuits.get(circID).purpose = purpose;
+
+        mService.checkIfWakelockRequired();
+    }
+
+
+    public boolean hasBuiltHiddenServiceCircuits() {
+        for (Circuit circuit : hmBuiltCircuits.values()) {
+            if (circuit.purpose.equals("HS_SERVICE_INTRO"))
+                return true;
+        }
+        return false;
     }
 
     private class ExternalIPFetcher implements Runnable {
