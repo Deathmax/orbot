@@ -123,17 +123,21 @@
                 android:text="@string/menu_log"
                 android:textAppearance="?android:attr/textAppearanceMedium"
                 />
-            <TextView
-                android:id="@+id/orbotLog"
-                android:textSize="12sp"
-                android:gravity="start"
+            <ScrollView
                 android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_alignParentLeft="true"
-                android:layout_marginTop="10dp"
-                android:textIsSelectable="true"
-                android:fontFamily="monospace"
-                />
+                android:layout_height="fill_parent">
+                <TextView
+                    android:id="@+id/orbotLog"
+                    android:textSize="12sp"
+                    android:gravity="start"
+                    android:layout_width="fill_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentLeft="true"
+                    android:layout_marginTop="10dp"
+                    android:textIsSelectable="true"
+                    android:fontFamily="monospace"
+                    />
+            </ScrollView>
         </LinearLayout>
 
     </android.support.v4.widget.DrawerLayout>
