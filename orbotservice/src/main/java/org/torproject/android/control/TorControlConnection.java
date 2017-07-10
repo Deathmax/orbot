@@ -209,10 +209,10 @@ public class TorControlConnection implements TorControlCommands {
             int idx = line.msg.indexOf(' ');
             String tp = line.msg.substring(0, idx).toUpperCase();
             String rest = line.msg.substring(idx + 1);
+            Map<String, String> args = getKeywordedArgs(line.msg);
             switch (tp) {
                 case "CIRC": {
                     List<String> lst = Bytes.splitStr(null, rest);
-                    Map<String, String> args = getKeywordedArgs(line.msg);
                     handler.circuitStatus(lst.get(1),
                             lst.get(0),
                             lst.get(1).equals("LAUNCHED")
@@ -224,7 +224,6 @@ public class TorControlConnection implements TorControlCommands {
                 }
                 case "CIRC_MINOR": {
                     List<String> lst = Bytes.splitStr(null, rest);
-                    Map<String, String> args = getKeywordedArgs(line.msg);
                     handler.circuitMinorStatus(lst.get(1),
                             lst.get(0),
                             args.containsKey("PURPOSE") ?
@@ -286,8 +285,8 @@ public class TorControlConnection implements TorControlCommands {
                 m = kwArg.matcher(content);
 
             if (m.find()) {
-                content = m.group(0);
-                keywordArgs.put(m.group(1), m.group(2));
+                content = m.group(1);
+                keywordArgs.put(m.group(2), m.group(3));
             } else {
                 break;
             }
