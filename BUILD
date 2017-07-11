@@ -51,6 +51,9 @@ Now build the Android app
 
 (gradle / android studio instructions here)
 
+On Windows/case-insensitive filesystems, you may have to rename this BUILD file
+to avoid a filename clash with gradle's build process.
+
 This will produce an unsigned Tor package APK.
 
 To produce a usable package, you'll need to sign the .apk. The basics on
