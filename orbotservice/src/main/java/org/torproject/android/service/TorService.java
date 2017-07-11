@@ -26,6 +26,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.ConnectivityManager;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -55,6 +57,7 @@ import org.torproject.android.service.vpn.OrbotVpnManager;
 import org.torproject.android.service.vpn.TorVpnService;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.File;
@@ -63,7 +66,10 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.net.Socket;
@@ -88,9 +94,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     private final static int CONTROL_SOCKET_TIMEOUT = 0;
 
     private TorControlConnection conn = null;
-    private TorControlConnection statusConn = null;
-    private Socket torConnSocket = null;
-    private Socket torStatusConnSocket = null;
+    private LocalSocket torWakeLockConnSocket = null;
     private int mLastProcessId = -1;
 
     private int mPortHTTP = HTTP_PROXY_PORT_DEFAULT;
@@ -142,6 +146,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     private boolean hasHiddenServices;
 
     private ArrayList<Bridge> alBridges = null;
+
+    private Thread wakeLockThread;
 
 
     private static final Uri HS_CONTENT_URI = Uri.parse("content://org.torproject.android.ui.hiddenservices.providers/hs");
@@ -495,7 +501,10 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
             }
 
             conn = null;
-            statusConn = null;
+            torWakeLockConnSocket = null;
+            if (wakeLockThread != null) {
+                wakeLockThread.interrupt();
+            }
         }
 
         if (mShellPolipo != null) {
@@ -1042,9 +1051,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     }
 
     private int initControlConnection(int maxTries, boolean isReconnect) throws Exception, RuntimeException {
-//        if (hasHiddenServices)
-//            initStatusControlConnection(maxTries, isReconnect);
-
+        if (hasHiddenServices)
+            initWakeLockControlPort(maxTries, isReconnect);
         int controlPort = -1;
         int attempt = 0;
 
@@ -1058,7 +1066,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                 if (controlPort != -1) {
                     logNotice("Connecting to control port: " + controlPort);
 
-                    torConnSocket = new Socket(IP_LOCALHOST, controlPort);
+                    Socket torConnSocket = new Socket(IP_LOCALHOST, controlPort);
                     torConnSocket.setSoTimeout(CONTROL_SOCKET_TIMEOUT);
 
                     conn = new TorControlConnection(torConnSocket);
@@ -1122,63 +1130,67 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
     }
 
-    private void initStatusControlConnection(int maxTries, boolean isReconnect) throws Exception, RuntimeException {
-        int controlPort = -1;
+    private void initWakeLockControlPort(int maxTries, boolean isReconnect) throws Exception, RuntimeException {
         int attempt = 0;
 
-        logNotice("Waiting for status control port...");
+        logNotice("Waiting for wakelock control port...");
 
-        while (statusConn == null && attempt++ < maxTries) {
+        while (torWakeLockConnSocket == null && attempt++ < maxTries) {
             try {
+                logNotice("Connecting to wakelock control port" );
 
-                controlPort = getControlPort();
+                torWakeLockConnSocket = new LocalSocket();
+                torWakeLockConnSocket.connect(new LocalSocketAddress("org.torproject.android.status"));
 
-                if (controlPort != -1) {
-                    logNotice("Connecting to status control port: " + controlPort);
+                break;
 
-                    // If we can connect once, we can probably connect another time.
-                    torStatusConnSocket = new Socket(IP_LOCALHOST, controlPort);
-                    torStatusConnSocket.setSoTimeout(CONTROL_SOCKET_TIMEOUT);
-
-                    statusConn = new TorControlConnection(torStatusConnSocket);
-                    statusConn.setDebugging(System.out);
-                    statusConn.launchThread(true);//is daemon
-
-                    break;
-                }
-
-            } catch (Exception ce) {
-                statusConn = null;
-                //    logException( "Error connecting to Tor local control port: " + ce.getMessage(),ce);
-
+            }catch (Exception ce) {
+                torWakeLockConnSocket = null;
+                Log.e(TAG, "initWakeLockControlPort: ", ce);
             }
 
-
             try {
-                //    logNotice("waiting...");
                 Thread.sleep(1000);
             } catch (Exception e) {
             }
         }
 
-        if (statusConn != null) {
-            logNotice("SUCCESS connected to Tor control port (status).");
+        if (torWakeLockConnSocket != null && wakeLockThread == null) {
+            logNotice("SUCCESS connected to Tor control port (wakelock).");
 
-            File fileCookie = new File(appCacheHome, TOR_CONTROL_COOKIE);
+            wakeLockThread = new Thread(new TorWakeLockRunnable());
+            wakeLockThread.setDaemon(true);
+            wakeLockThread.start();
+        }
+    }
 
-            if (fileCookie.exists()) {
-                byte[] cookie = new byte[(int) fileCookie.length()];
-                DataInputStream fis = new DataInputStream(new FileInputStream(fileCookie));
-                fis.read(cookie);
-                fis.close();
-                statusConn.authenticate(cookie);
-
-                logNotice("SUCCESS - authenticated to control port (status).");
-
-                addStatusEventHandler();
-            } else {
-                logNotice("Tor authentication cookie does not exist yet");
-                statusConn = null;
+    private class TorWakeLockRunnable implements Runnable {
+        @Override
+        public void run() {
+            try {
+                BufferedReader br = new BufferedReader(new InputStreamReader(torWakeLockConnSocket.getInputStream()));
+                OutputStream ow = torWakeLockConnSocket.getOutputStream();
+                while (torWakeLockConnSocket != null) {
+                    try {
+                        // Line format: WAKELOCK [TRUE/FALSE] ENABLE=[count] DISABLE=[count]
+                        String line = br.readLine();
+                        Log.d(TAG, "recv: " + line);
+                        String[] parts = line.split(" ");
+                        boolean acquireWakelock = parts[1].equalsIgnoreCase("TRUE");
+                        Log.d(TAG, "acquireWakelock: " + parts[1]);
+                        if (acquireWakelock) {
+                            holdWakeLock();
+                        } else {
+                            releaseWakeLock();
+                        }
+                        Log.d(TAG, "writing one byte to socket");
+                        ow.write(1);
+                    } catch (Exception ex) {
+                        logException("error with wake lock thread", ex);
+                    }
+                }
+            } catch (IOException ex) {
+                logException("error creating input/output stream", ex);
             }
         }
     }
@@ -1217,18 +1229,6 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         }
 
         return result;
-    }
-
-    public synchronized void addStatusEventHandler() throws Exception {
-        // We extend NullEventHandler so that we don't need to provide empty
-        // implementations for all the events we don't care about.
-        // ...
-        logNotice("adding status control port event handler");
-
-        statusConn.setEventHandler(mEventHandler);
-        statusConn.setEvents(Arrays.asList("STATUS_WORK"));
-
-        logNotice("SUCCESS added status control port event handler");
     }
 
     public synchronized void addEventHandler() throws Exception {
@@ -1486,7 +1486,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
      */
     public synchronized void holdWakeLock() {
         if (mCurrentStatus.equals(STATUS_OFF)) {
-            debug("Wake lock requested when Tor is off.");
+            Log.d(TAG, "Wake lock requested when Tor is off.");
             releaseWakeLock();
             return;
         }
@@ -1496,7 +1496,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
             // Needed for the acquire/release trick in releaseWakeLock to work.
             wakeLock.setReferenceCounted(false);
         }
-        debug("Holding wakelock.");
+        Log.d(TAG, "Holding wakelock.");
         wakeLock.acquire();
     }
 
@@ -1514,7 +1514,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
             return;
         }
 
-        debug("Releasing wakelock.");
+        Log.d(TAG, "Releasing wakelock.");
 
 //        // TODO: release wakelock after a few ms rather than immediately after calling so that we
 //        // can abort releasing the wakelock if we acquire it after.
@@ -1529,36 +1529,37 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     }
 
     public void checkIfWakelockRequired() {
-        // Are we running?
-        if (mCurrentStatus.equals(STATUS_OFF)) {
-            releaseWakeLock();
-            return;
-        }
-        // Do we have any HS intro circuits?
-        if (mEventHandler.hasBuiltHiddenServiceCircuits())
-        {
-            releaseWakeLock();
-            return;
-        }
-        // Do we have connectivity? If not why bother?
-        if (!hasConnectivity())
-        {
-            releaseWakeLock();
-            return;
-        }
-        // We might want to be holding wake locks until circs are built
-//        // Are we even sleeping? If not Tor can deal with it
-//        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-//        if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH && pm.isInteractive())
-//                || pm.isScreenOn()) {
+        // Disable this if we're relying on Tor signaling to us to hold a wakelock
+//        // Are we running?
+//        if (mCurrentStatus.equals(STATUS_OFF)) {
 //            releaseWakeLock();
 //            return;
 //        }
-
-        debug("We have connectivity but no intro circuits, holding wakelock until we do.");
-        // We have no intro circs, and have connectivity, we need to establish new circs
-        // We will release the wake lock when we get called again from the event handler
-        holdWakeLock();
+//        // Do we have any HS intro circuits?
+//        if (mEventHandler.hasBuiltHiddenServiceCircuits())
+//        {
+//            releaseWakeLock();
+//            return;
+//        }
+//        // Do we have connectivity? If not why bother?
+//        if (!hasConnectivity())
+//        {
+//            releaseWakeLock();
+//            return;
+//        }
+//        // We might want to be holding wake locks until circs are built
+////        // Are we even sleeping? If not Tor can deal with it
+////        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+////        if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH && pm.isInteractive())
+////                || pm.isScreenOn()) {
+////            releaseWakeLock();
+////            return;
+////        }
+//
+//        debug("We have connectivity but no intro circuits, holding wakelock until we do.");
+//        // We have no intro circs, and have connectivity, we need to establish new circs
+//        // We will release the wake lock when we get called again from the event handler
+//        holdWakeLock();
     }
 
     /*
