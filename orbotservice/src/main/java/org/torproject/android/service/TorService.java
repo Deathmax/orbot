@@ -1102,14 +1102,12 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
                 String torProcId = conn.getInfo("process/pid");
 
-                try {
-                    String confSocks = conn.getInfo("net/listeners/socks");
-                    StringTokenizer st = new StringTokenizer(confSocks, " ");
+                String confSocks = conn.getInfo("net/listeners/socks");
+                StringTokenizer st = new StringTokenizer(confSocks, " ");
 
-                    confSocks = st.nextToken().split(":")[1];
-                    confSocks = confSocks.substring(0, confSocks.length() - 1);
-                    mPortSOCKS = Integer.parseInt(confSocks);
-                } catch (Exception ex) {}
+                confSocks = st.nextToken().split(":")[1];
+                confSocks = confSocks.substring(0, confSocks.length() - 1);
+                mPortSOCKS = Integer.parseInt(confSocks);
 
                 return Integer.parseInt(torProcId);
 
@@ -1242,6 +1240,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         conn.setEventHandler(mEventHandler);
         conn.setEvents(
                 Arrays.asList("ORCONN", "CIRC", "NOTICE", "WARN", "ERR", "BW", "CIRC_MINOR"));
+        mEventHandler.initCircuitStatus(conn.getInfo("circuit-status"));
 //        debug(conn.getInfo("circuit-status"));
         // conn.setEvents(Arrays.asList(new String[]{
         //  "DEBUG", "INFO", "NOTICE", "WARN", "ERR"}));
@@ -1564,7 +1563,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
     /*
      *  Another way to do this would be to use the Observer pattern by defining the 
-     *  BroadcastReciever in the Android manifest.
+     *  BroadcastReceiver in the Android manifest.
      */
     private final BroadcastReceiver mNetworkStateReceiver = new WakefulBroadcastReceiver() {
         @Override
@@ -1614,14 +1613,10 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                 }
 
                 try {
-
                     if (mConnectivity) {
                         if (Prefs.useRoot() && Prefs.useTransparentProxying() && Prefs.transProxyNetworkRefresh()) {
-
-
                             disableTransparentProxy();
                             enableTransparentProxy();
-
                         }
                     }
 

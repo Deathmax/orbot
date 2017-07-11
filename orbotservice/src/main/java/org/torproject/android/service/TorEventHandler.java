@@ -16,7 +16,10 @@ import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.StringTokenizer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 import org.torproject.android.control.EventHandler;
@@ -248,6 +251,8 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
             }
         }
 
+        // If HS is turned on, ensure that we are maintaining a introduction circuit at all times
+        // by holding wake lock when we have no such circuits and releasing it when we've built one
         if (mService.isHasHiddenServices()) {
             Circuit circ = new Circuit();
             circ.id = circID;
@@ -275,13 +280,52 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         mService.checkIfWakelockRequired();
     }
 
-
     public boolean hasBuiltHiddenServiceCircuits() {
         for (Circuit circuit : hmBuiltCircuits.values()) {
             if (circuit.purpose.equals("HS_SERVICE_INTRO"))
                 return true;
         }
         return false;
+    }
+
+    public void initCircuitStatus(String raw) {
+        hmBuiltCircuits.clear();
+        String[] list = raw.split("\r\n");
+        for (String event : list) {
+            if (event.trim().isEmpty())
+                continue;
+            String[] parts = event.split(" ");
+            Circuit circuit = new Circuit();
+            circuit.id = parts[0];
+            circuit.status = parts[1];
+            Map<String, String> keywordAttr = getKeywordedArgs(event);
+            circuit.purpose = keywordAttr.containsKey("PURPOSE") ? keywordAttr.get("PURPOSE") : "";
+            // we only care about potentially missing BUILT circuits
+            if (!circuit.status.equals("BUILT"))
+                continue;
+            hmBuiltCircuits.put(circuit.id, circuit);
+        }
+    }
+
+    private Map<String, String> getKeywordedArgs(String content) {
+        Pattern quotedKwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=\"(.*)\"$");
+        Pattern kwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=(\\S*)$");
+        Map<String, String> keywordArgs = new HashMap<>();
+        while (true) {
+            // First try to match quoted args
+            Matcher m = quotedKwArg.matcher(content);
+            if (!m.find())
+                // If quoted args fail, try without quotes
+                m = kwArg.matcher(content);
+
+            if (m.find()) {
+                content = m.group(1);
+                keywordArgs.put(m.group(2), m.group(3));
+            } else {
+                break;
+            }
+        }
+        return keywordArgs;
     }
 
     private class ExternalIPFetcher implements Runnable {
