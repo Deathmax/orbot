@@ -275,7 +275,8 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         if (!mService.isHasHiddenServices())
             return;
 
-        hmBuiltCircuits.get(circID).purpose = purpose;
+        if (hmBuiltCircuits.containsKey(circID))
+            hmBuiltCircuits.get(circID).purpose = purpose;
 
         mService.checkIfWakelockRequired();
     }
