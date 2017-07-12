@@ -142,6 +142,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     private Shell mShellPolipo;
 
     private PowerManager.WakeLock wakeLock;
+    private final Object wakeLockLock = new Object();
 
     private boolean hasHiddenServices;
 
@@ -1484,48 +1485,52 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     /**
      * Have the service hold a wakelock for at most 30 seconds.
      */
-    public synchronized void holdWakeLock() {
-        if (mCurrentStatus.equals(STATUS_OFF)) {
-            Log.d(TAG, "Wake lock requested when Tor is off.");
-            releaseWakeLock();
-            return;
+    public void holdWakeLock() {
+        synchronized (wakeLockLock) {
+            if (mCurrentStatus.equals(STATUS_OFF)) {
+                Log.d(TAG, "Wake lock requested when Tor is off.");
+                releaseWakeLock();
+                return;
+            }
+            if (wakeLock == null) {
+                wakeLock = ((PowerManager) getSystemService(POWER_SERVICE))
+                        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TorWakelock");
+                // Needed for the acquire/release trick in releaseWakeLock to work.
+                wakeLock.setReferenceCounted(false);
+            }
+            Log.d(TAG, "Holding wakelock.");
+            wakeLock.acquire();
         }
-        if (wakeLock == null) {
-            wakeLock = ((PowerManager) getSystemService(POWER_SERVICE))
-                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TorWakelock");
-            // Needed for the acquire/release trick in releaseWakeLock to work.
-            wakeLock.setReferenceCounted(false);
-        }
-        Log.d(TAG, "Holding wakelock.");
-        wakeLock.acquire();
     }
 
     /**
      * Have the service release a previously acquired wakelock.
      */
-    public synchronized void releaseWakeLock() {
-        // Return if we never had a wakelock in the first place
-        if (wakeLock == null) {
-            return;
-        }
+    public void releaseWakeLock() {
+        synchronized (wakeLockLock) {
+            // Return if we never had a wakelock in the first place
+            if (wakeLock == null) {
+                return;
+            }
 
-        // Return if the wakelock is not being held.
-        if (!wakeLock.isHeld()) {
-            return;
-        }
+            // Return if the wakelock is not being held.
+            if (!wakeLock.isHeld()) {
+                return;
+            }
 
-        Log.d(TAG, "Releasing wakelock.");
+            Log.d(TAG, "Releasing wakelock.");
 
 //        // TODO: release wakelock after a few ms rather than immediately after calling so that we
 //        // can abort releasing the wakelock if we acquire it after.
 //        wakeLock.release();
 
-        // This is sort of a hack to avoid implementing a Handler/Looper ourselves.
-        // acquire() will remove any existing timers for the wakelock and then release it, so we
-        // "acquire" the wakelock for 100ms, and if holdWakeLock() is never called within 100ms,
-        // the wakelock gets released. If holdWakeLock() does get called, then the timeout is reset.
+            // This is sort of a hack to avoid implementing a Handler/Looper ourselves.
+            // acquire() will remove any existing timers for the wakelock and then release it, so we
+            // "acquire" the wakelock for 100ms, and if holdWakeLock() is never called within 100ms,
+            // the wakelock gets released. If holdWakeLock() does get called, then the timeout is reset.
 //        wakeLock.acquire(10);
-        wakeLock.release();
+            wakeLock.release();
+        }
     }
 
     public void checkIfWakelockRequired() {
