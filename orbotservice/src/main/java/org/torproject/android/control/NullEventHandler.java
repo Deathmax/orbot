@@ -14,7 +14,7 @@ public class NullEventHandler implements EventHandler {
     public void bandwidthUsed(long read, long written) {}
     public void newDescriptors(java.util.List<String> orList) {}
     public void message(String severity, String msg) {}
-    public void workStatus(boolean status) {}
+    public void wakeLockStatus(boolean status) {}
     public void unrecognized(String type, String msg) {}
 }
 

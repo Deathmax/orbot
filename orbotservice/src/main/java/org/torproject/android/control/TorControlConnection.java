@@ -13,7 +13,6 @@ import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -22,7 +21,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
-import java.util.concurrent.CancellationException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,6 +32,9 @@ public class TorControlConnection implements TorControlCommands {
     private final Writer output;
 
     private ControlParseThread thread; // Locking: this
+
+    private final Pattern quotedKwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=\"(.*)\"$");
+    private final Pattern kwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=(\\S*)$");
 
     private volatile EventHandler handler;
     private volatile PrintWriter debugOutput;
@@ -261,9 +262,9 @@ public class TorControlConnection implements TorControlCommands {
                 case "ERR":
                     handler.message(tp, rest);
                     break;
-                case "STATUS_WORK": {
+                case "WAKELOCK": {
                     List<String> lst = Bytes.splitStr(null, rest);
-                    handler.workStatus(lst.get(0).equalsIgnoreCase("TRUE"));
+                    handler.wakeLockStatus(lst.get(0).equalsIgnoreCase("TRUE"));
                     break;
                 }
                 default:
@@ -274,8 +275,6 @@ public class TorControlConnection implements TorControlCommands {
     }
 
     private Map<String, String> getKeywordedArgs(String content) {
-        Pattern quotedKwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=\"(.*)\"$");
-        Pattern kwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=(\\S*)$");
         Map<String, String> keywordArgs = new HashMap<>();
         while (true) {
             // First try to match quoted args

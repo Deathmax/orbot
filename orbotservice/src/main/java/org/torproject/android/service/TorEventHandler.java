@@ -150,8 +150,7 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
     }
 
     @Override
-    public void workStatus(boolean status) {
-        mService.debug("workStatus: " + status);
+    public void wakeLockStatus(boolean status) {
         if (status) {
             mService.holdWakeLock();
         } else {
