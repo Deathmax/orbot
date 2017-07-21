@@ -783,6 +783,12 @@ public class TorControlConnection implements TorControlCommands {
         sendAndWaitForResponse("TAKEOWNERSHIP\r\n", null);
     }
 
+    /** Tells Tor to mark this connection as solely for wake lock messages
+     */
+    public void enableWakeLock() throws IOException {
+        sendAndWaitForResponse("ENABLEWAKELOCK\r\n", null);
+    }
+
     /** Tells Tor to forget any cached client state relating to the hidden
      * service with the given hostname (excluding the .onion extension).
      */

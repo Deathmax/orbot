@@ -144,6 +144,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     private Shell mShellPolipo;
 
     private PowerManager.WakeLock wakeLock;
+    private AlarmManager alarmManager;
 
     private boolean hasHiddenServices;
 
@@ -484,7 +485,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         clearNotifications();
         sendCallbackStatus(STATUS_OFF);
         releaseWakeLock();
-        ((AlarmManager) getSystemService(ALARM_SERVICE)).cancel(alarmPendingIntent);
+        if (alarmManager != null)
+            alarmManager.cancel(alarmPendingIntent);
 
         try {
             unregisterReceiver(mNetworkStateReceiver);
@@ -795,8 +797,14 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
             if (hidden_services != null) {
                 try {
                     // Start the minute alarm
-                    ((AlarmManager) getSystemService(ALARM_SERVICE)).setRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                            SystemClock.elapsedRealtime() + MINUTE_INTERVAL, MINUTE_INTERVAL, alarmPendingIntent);
+                    alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                                SystemClock.elapsedRealtime() + MINUTE_INTERVAL, alarmPendingIntent);
+                    } else {
+                        alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                                SystemClock.elapsedRealtime() + MINUTE_INTERVAL, alarmPendingIntent);
+                    }
                     while (hidden_services.moveToNext()) {
                         String HSDomain = hidden_services.getString(hidden_services.getColumnIndex(HiddenService.DOMAIN));
                         Integer HSLocalPort = hidden_services.getInt(hidden_services.getColumnIndex(HiddenService.PORT));
@@ -852,66 +860,87 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     /**
      * For checking the health status of hidden services
      */
-    private class HiddenServiceAlarmReceiver extends WakefulBroadcastReceiver {
+    private class HiddenServiceAlarmReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "HiddenServiceAlarmReceiver: onReceive()");
-            int tryCounter = 0;
-            final int maxTries = 10;
-            // Run for at most maxTries times
-            while (tryCounter < maxTries) {
-                // Don't run when we're off
-                if (mCurrentStatus.equals(STATUS_OFF))
-                    return;
-                // Don't run when Android thinks we have no connectivity
-                if (!mConnectivity)
-                    return;
-                // Don't run if we don't have a control port
-                if (conn == null)
-                    return;
-                try {
-                    String liveliness = conn.getInfo("network-liveness");
-                    // Don't run if tor thinks the network is down
-                    if (liveliness.trim().equals("down"))
-                        return;
-                    String enoughDirInfo = conn.getInfo("status/enough-dir-info");
-                    // Don't run if tor doesn't have enough directory info
-                    if (enoughDirInfo.trim().equals("0"))
-                        return;
-                    boolean hasIntroCircuits = false;
-                    String circuitStatus = conn.getInfo("circuit-status");
-                    String[] list = circuitStatus.split("\r\n");
-                    for (String event : list) {
-                        if (event.trim().isEmpty())
-                            continue;
-                        String[] parts = event.split(" ");
-                        // Ignore circuits that aren't built
-                        if (!parts[1].equals("BUILT"))
-                            continue;
-                        Map<String, String> keywordAttr = getKeywordedArgs(event);
-                        String purpose = keywordAttr.containsKey("PURPOSE") ? keywordAttr.get("PURPOSE") : "";
-                        if (!purpose.equals("HS_SERVICE_INTRO"))
-                            continue;
-                        hasIntroCircuits = true;
-                    break;
-                }
-                // exit receiver if we have circs
-                if (hasIntroCircuits)
-                    return;
-
-                Log.d(TAG, "we have no intro circs, holding a wakelock");
-                // Loop until we exceed maxTries, or we get a HS circuit.
-                // We have a wake lock held for us until onReceive returns
-                tryCounter++;
-                Thread.sleep(1000);
-                } catch (IOException ex) {
-                    logException("Something went wrong with health alarm.", ex);
-                    break;
-                } catch (InterruptedException ex) {
-                    logException("Sleep got interrupted", ex);
-                    break;
-                }
+            // Reset our alarm
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + MINUTE_INTERVAL, alarmPendingIntent);
+            } else {
+                alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + MINUTE_INTERVAL, alarmPendingIntent);
             }
+
+            // Run check in separate thread, receiver runs on UI thread.
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    Log.d(TAG, "Checking if hidden service is healthy.");
+                    PowerManager.WakeLock wl = ((PowerManager) getSystemService(POWER_SERVICE))
+                            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TorAlarm");
+                    wl.acquire(12);
+                    int tryCounter = 0;
+                    final int maxTries = 10;
+                    // Run for at most maxTries times
+                    while (tryCounter < maxTries) {
+                        // Don't run when we're off
+                        if (mCurrentStatus.equals(STATUS_OFF))
+                            break;
+                        // Don't run when Android thinks we have no connectivity
+                        if (!mConnectivity)
+                            break;
+                        // Don't run if we don't have a control port
+                        if (conn == null)
+                            break;
+                        try {
+                            String liveliness = conn.getInfo("network-liveness");
+                            // Don't run if tor thinks the network is down
+                            if (liveliness.trim().equals("down"))
+                                break;
+                            String enoughDirInfo = conn.getInfo("status/enough-dir-info");
+                            // Don't run if tor doesn't have enough directory info
+                            if (enoughDirInfo.trim().equals("0"))
+                                break;
+                            boolean hasIntroCircuits = false;
+                            String circuitStatus = conn.getInfo("circuit-status");
+                            String[] list = circuitStatus.split("\r\n");
+                            for (String event : list) {
+                                if (event.trim().isEmpty())
+                                    continue;
+                                String[] parts = event.split(" ");
+                                // Ignore circuits that aren't built
+                                if (!parts[1].equals("BUILT"))
+                                    continue;
+                                Map<String, String> keywordAttr = getKeywordedArgs(event);
+                                String purpose = keywordAttr.containsKey("PURPOSE") ? keywordAttr.get("PURPOSE") : "";
+                                if (!purpose.equals("HS_SERVICE_INTRO"))
+                                    continue;
+                                hasIntroCircuits = true;
+                                break;
+                            }
+                            // exit receiver if we have circs
+                            if (hasIntroCircuits)
+                                break;
+
+                            Log.d(TAG, "we have no intro circs, holding a wakelock");
+                            // Loop until we exceed maxTries, or we get a HS circuit.
+                            // We have a wake lock held for us until onReceive returns
+                            tryCounter++;
+                            Thread.sleep(1000);
+                        } catch (IOException ex) {
+                            logException("Something went wrong with health alarm.", ex);
+                            break;
+                        } catch (InterruptedException ex) {
+                            logException("Sleep got interrupted", ex);
+                            break;
+                        }
+                    }
+                    wl.release();
+                    Log.d(TAG, "Done HS health check");
+                }
+            }).start();
         }
 
         private final Pattern quotedKwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=\"(.*)\"$");
@@ -1346,6 +1375,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         connWakeLock.setEvents(
                 Arrays.asList("WAKELOCK"));
         connWakeLock.takeOwnership();
+        connWakeLock.enableWakeLock();
 
         logNotice("SUCCESS added wake lock control port event handler");
     }
