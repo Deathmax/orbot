@@ -1330,6 +1330,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         conn.setEventHandler(mEventHandler);
         conn.setEvents(
                 Arrays.asList("ORCONN", "CIRC", "NOTICE", "WARN", "ERR", "BW", "CIRC_MINOR"));
+        conn.takeOwnership();
         mEventHandler.initCircuitStatus(conn.getInfo("circuit-status"));
 //        debug(conn.getInfo("circuit-status"));
         // conn.setEvents(Arrays.asList(new String[]{
@@ -1344,6 +1345,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         connWakeLock.setEventHandler(mEventHandler);
         connWakeLock.setEvents(
                 Arrays.asList("WAKELOCK"));
+        connWakeLock.takeOwnership();
 
         logNotice("SUCCESS added wake lock control port event handler");
     }
