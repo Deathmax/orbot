@@ -154,6 +154,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
     private static final long MINUTE_INTERVAL = 60000L;
     private PendingIntent alarmPendingIntent;
+    private HiddenServiceAlarmReceiver mAlarmReceiver;
+    private static final String ACTION_ALARM = "org.torproject.android.service.hiddenservice";
 
     private static final Uri HS_CONTENT_URI = Uri.parse("content://org.torproject.android.ui.hiddenservices.providers/hs");
     private static final Uri COOKIE_CONTENT_URI = Uri.parse("content://org.torproject.android.ui.hiddenservices.providers.cookie/cookie");
@@ -493,6 +495,11 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         } catch (IllegalArgumentException iae) {
             //not registered yet
         }
+        try {
+            unregisterReceiver(mAlarmReceiver);
+        } catch (IllegalArgumentException iae) {
+            //not registered yet
+        }
     }
 
     private void killAllDaemons() throws Exception {
@@ -580,9 +587,12 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                         IntentFilter mNetworkStateFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
                         registerReceiver(mNetworkStateReceiver, mNetworkStateFilter);
 
+                        mAlarmReceiver = new HiddenServiceAlarmReceiver();
+                        registerReceiver(mAlarmReceiver, new IntentFilter(ACTION_ALARM));
+
                         // TODO: Behaviour differences between >= M vs <= L?
 //            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        Intent intent = new Intent(this, HiddenServiceAlarmReceiver.class);
+                        Intent intent = new Intent(ACTION_ALARM);
                         alarmPendingIntent = PendingIntent.getBroadcast(this, 0, intent, 0);
 //            }
 
@@ -860,7 +870,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
     /**
      * For checking the health status of hidden services
      */
-    private class HiddenServiceAlarmReceiver extends BroadcastReceiver {
+    public class HiddenServiceAlarmReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "HiddenServiceAlarmReceiver: onReceive()");
@@ -880,7 +890,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                     Log.d(TAG, "Checking if hidden service is healthy.");
                     PowerManager.WakeLock wl = ((PowerManager) getSystemService(POWER_SERVICE))
                             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TorAlarm");
-                    wl.acquire(12);
+                    wl.acquire(12*1000);
                     int tryCounter = 0;
                     final int maxTries = 10;
                     // Run for at most maxTries times
@@ -937,7 +947,11 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                             break;
                         }
                     }
-                    wl.release();
+                    try {
+                        wl.release();
+                    } catch (RuntimeException ex) {
+                        // Ignore wake lock underlocked exceptions
+                    }
                     Log.d(TAG, "Done HS health check");
                 }
             }).start();
