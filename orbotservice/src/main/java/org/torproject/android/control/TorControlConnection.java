@@ -785,8 +785,12 @@ public class TorControlConnection implements TorControlCommands {
 
     /** Tells Tor to mark this connection as solely for wake lock messages
      */
-    public void enableWakeLock() throws IOException {
-        sendAndWaitForResponse("ENABLEWAKELOCK\r\n", null);
+    public void enableWakeLock(boolean wait) throws IOException {
+        if (wait) {
+            sendAndWaitForResponse("ENABLEWAKELOCK\r\n", null);
+        } else {
+            output.write("ENABLEWAKELOCK\r\n");
+        }
     }
 
     /** Tells Tor to forget any cached client state relating to the hidden

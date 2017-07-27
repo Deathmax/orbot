@@ -6,6 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
@@ -23,6 +24,7 @@ import java.util.regex.Pattern;
 
 
 import org.torproject.android.control.EventHandler;
+import org.torproject.android.control.TorControlConnection;
 import org.torproject.android.service.util.Prefs;
 
 /**
@@ -156,6 +158,11 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         } else {
             mService.releaseWakeLock();
         }
+        try {
+            mService.getWakeLockControlConnection().enableWakeLock(false);
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
     }
 
     private String formatCount(long count) {
@@ -278,54 +285,6 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
             hmBuiltCircuits.get(circID).purpose = purpose;
 
         mService.checkIfWakelockRequired();
-    }
-
-    public boolean hasBuiltHiddenServiceCircuits() {
-        for (Circuit circuit : hmBuiltCircuits.values()) {
-            if (circuit.purpose.equals("HS_SERVICE_INTRO"))
-                return true;
-        }
-        return false;
-    }
-
-    public void initCircuitStatus(String raw) {
-        hmBuiltCircuits.clear();
-        String[] list = raw.split("\r\n");
-        for (String event : list) {
-            if (event.trim().isEmpty())
-                continue;
-            String[] parts = event.split(" ");
-            Circuit circuit = new Circuit();
-            circuit.id = parts[0];
-            circuit.status = parts[1];
-            Map<String, String> keywordAttr = getKeywordedArgs(event);
-            circuit.purpose = keywordAttr.containsKey("PURPOSE") ? keywordAttr.get("PURPOSE") : "";
-            // we only care about potentially missing BUILT circuits
-            if (!circuit.status.equals("BUILT"))
-                continue;
-            hmBuiltCircuits.put(circuit.id, circuit);
-        }
-    }
-
-    private Map<String, String> getKeywordedArgs(String content) {
-        Pattern quotedKwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=\"(.*)\"$");
-        Pattern kwArg = Pattern.compile("^(.*) ([A-Za-z0-9_]+)=(\\S*)$");
-        Map<String, String> keywordArgs = new HashMap<>();
-        while (true) {
-            // First try to match quoted args
-            Matcher m = quotedKwArg.matcher(content);
-            if (!m.find())
-                // If quoted args fail, try without quotes
-                m = kwArg.matcher(content);
-
-            if (m.find()) {
-                content = m.group(1);
-                keywordArgs.put(m.group(2), m.group(3));
-            } else {
-                break;
-            }
-        }
-        return keywordArgs;
     }
 
     private class ExternalIPFetcher implements Runnable {

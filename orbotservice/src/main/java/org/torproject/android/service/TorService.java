@@ -915,7 +915,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                                 break;
                             boolean hasIntroCircuits = false;
                             String circuitStatus = conn.getInfo("circuit-status");
-                            String[] list = circuitStatus.split("\r\n");
+                            String[] list = circuitStatus.replace("\r", "").split("\n");
                             for (String event : list) {
                                 if (event.trim().isEmpty())
                                     continue;
@@ -1197,6 +1197,10 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         return conn;
     }
 
+    protected TorControlConnection getWakeLockControlConnection() {
+        return connWakeLock;
+    }
+
     private int initControlConnection(int maxTries, boolean isReconnect) throws Exception, RuntimeException {
         if (hasHiddenServices)
             initWakeLockControlPort(maxTries);
@@ -1374,7 +1378,6 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         conn.setEvents(
                 Arrays.asList("ORCONN", "CIRC", "NOTICE", "WARN", "ERR", "BW", "CIRC_MINOR"));
         conn.takeOwnership();
-        mEventHandler.initCircuitStatus(conn.getInfo("circuit-status"));
 //        debug(conn.getInfo("circuit-status"));
         // conn.setEvents(Arrays.asList(new String[]{
         //  "DEBUG", "INFO", "NOTICE", "WARN", "ERR"}));
@@ -1386,10 +1389,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         logNotice("adding wake lock control port event handler");
 
         connWakeLock.setEventHandler(mEventHandler);
-        connWakeLock.setEvents(
-                Arrays.asList("WAKELOCK"));
         connWakeLock.takeOwnership();
-        connWakeLock.enableWakeLock();
+        connWakeLock.enableWakeLock(true);
 
         logNotice("SUCCESS added wake lock control port event handler");
     }
