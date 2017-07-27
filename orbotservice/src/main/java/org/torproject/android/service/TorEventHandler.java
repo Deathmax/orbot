@@ -6,6 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
@@ -135,6 +136,20 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
         lastRead = read;
 
         mService.sendCallbackBandwidth(lastWritten, lastRead, mTotalTrafficWritten, mTotalTrafficRead);
+    }
+
+    @Override
+    public void wakeLockStatus(boolean status) {
+        if (status) {
+            mService.holdWakeLock();
+        } else {
+            mService.releaseWakeLock();
+        }
+        try {
+            mService.getWakeLockControlConnection().enableWakeLock(false);
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
     }
 
     private String formatCount(long count) {

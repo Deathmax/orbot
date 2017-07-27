@@ -35,6 +35,9 @@ public class DebuggingEventHandler implements EventHandler {
     public void message(String type, String msg) {
         out.println("["+type+"] "+msg.trim());
     }
+    public void wakeLockStatus(boolean status) {
+        out.println("Wake Lock: " + status);
+    }
 
     public void unrecognized(String type, String msg) {
         out.println("unrecognized event ["+type+"] "+msg.trim());

@@ -66,6 +66,11 @@ public interface EventHandler {
      */
     public void message(String severity, String msg);
     /**
+     * Invoked when the wake lock of Tor changes.
+     * <b>wantLock</b> is true if Tor wants a wake lock now.
+     */
+    public void wakeLockStatus(boolean wantLock);
+    /**
      * Invoked when an unspecified message is received.
      * <type> is the message type, and <msg> is the message string.
      */

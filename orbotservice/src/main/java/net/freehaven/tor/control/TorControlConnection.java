@@ -237,6 +237,9 @@ public class TorControlConnection implements TorControlCommands {
                        tp.equals("WARN") ||
                        tp.equals("ERR")) {
                 handler.message(tp, rest);
+            } else if (tp.equals("WAKELOCK")) {
+                List<String> lst = Bytes.splitStr(null, rest);
+                handler.wakeLockStatus(lst.get(0).equalsIgnoreCase("TRUE"));
             } else {
                 handler.unrecognized(tp, rest);
             }
@@ -728,5 +731,22 @@ public class TorControlConnection implements TorControlCommands {
         sendAndWaitForResponse("CLOSECIRCUIT "+circID+
                                (ifUnused?" IFUNUSED":"")+"\r\n", null);
     }
+
+     /** Tells Tor to exit when this control connection is closed. This command
+      * was added in Tor 0.2.2.28-beta.
+      */
+      public void takeOwnership() throws IOException {
+          sendAndWaitForResponse("TAKEOWNERSHIP\r\n", null);
+      }
+
+     /** Tells Tor to mark this connection as solely for wake lock messages
+     */
+     public void enableWakeLock(boolean wait) throws IOException {
+         if (wait) {
+             sendAndWaitForResponse("ENABLEWAKELOCK\r\n", null);
+         } else {
+             output.write("ENABLEWAKELOCK\r\n");
+         }
+     }
 }
 
