@@ -2063,6 +2063,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         Cursor hidden_services = mCR.query(HS_CONTENT_URI, hsProjection, HiddenService.ENABLED + "=1", null, null);
         if(hidden_services != null) {
             try {
+                hasHiddenServices = true;
                 while (hidden_services.moveToNext()) {
                     String HSname = hidden_services.getString(hidden_services.getColumnIndex(HiddenService.NAME));
                     Integer HSLocalPort = hidden_services.getInt(hidden_services.getColumnIndex(HiddenService.PORT));
