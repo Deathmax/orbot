@@ -927,6 +927,10 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         @Override
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "HiddenServiceAlarmReceiver: onReceive()");
+            if (alarmManager == null) {
+                Log.d(TAG, "alarmManager is missing, did the service die?");
+                return;
+            }
             // Reset our alarm
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
