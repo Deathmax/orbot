@@ -224,19 +224,21 @@ public class TorEventHandler implements EventHandler, TorServiceConstants {
 
         if (Prefs.expandedNotifications())
         {
-            //get IP from last nodename
-            if(status.equals("BUILT")){
+            synchronized (hmBuiltNodes) {
+                //get IP from last nodename
+                if (status.equals("BUILT")){
 
-                if (node.ipAddress == null)
-                    mService.exec(new ExternalIPFetcher(node));
+                    if (node.ipAddress == null)
+                        mService.exec(new ExternalIPFetcher(node));
 
-                hmBuiltNodes.put(circID, node);
-            }
+                    hmBuiltNodes.put(circID, node);
+                }
 
-            if (status.equals("CLOSED"))
-            {
-                hmBuiltNodes.remove(circID);
+                if (status.equals("CLOSED"))
+                {
+                    hmBuiltNodes.remove(circID);
 
+                }
             }
         }
 

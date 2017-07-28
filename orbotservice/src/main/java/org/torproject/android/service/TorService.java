@@ -326,14 +326,14 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
          mNotifyBuilder.setCategory(Notification.CATEGORY_SERVICE);
 
          mNotification = mNotifyBuilder.build();
-        
+
         if (Build.VERSION.SDK_INT >= 16 && Prefs.expandedNotifications()) {
             // Create remote view that needs to be set as bigContentView for the notification.
-             RemoteViews expandedView = new RemoteViews(this.getPackageName(), 
+             RemoteViews expandedView = new RemoteViews(this.getPackageName(),
                      R.layout.layout_notification_expanded);
-             
+
              StringBuffer sbInfo = new StringBuffer();
-             
+
              if (notifyType == NOTIFY_ID)
                  expandedView.setTextViewText(R.id.text, notifyMsg);
              else
@@ -343,26 +343,28 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
              if (mEventHandler != null && mEventHandler.getNodes().size() > 0)
              {
-                 Set<String> itBuiltNodes = mEventHandler.getNodes().keySet();
-                 for (String key : itBuiltNodes)
-                 {
-                     TorEventHandler.Node node = mEventHandler.getNodes().get(key);
-                     
-                     if (node.ipAddress != null)
+                 synchronized (mEventHandler.getNodes()) {
+                     Set<String> itBuiltNodes = mEventHandler.getNodes().keySet();
+                     for (String key : itBuiltNodes)
                      {
-                         sbInfo.append(node.ipAddress);
-                     
-                         if (node.country != null)
-                             sbInfo.append(' ').append(node.country);
-                     
-                         if (node.organization != null)
-                             sbInfo.append(" (").append(node.organization).append(')');
-                     
-                         sbInfo.append('\n');
+                         TorEventHandler.Node node = mEventHandler.getNodes().get(key);
+
+                         if (node.ipAddress != null)
+                         {
+                             sbInfo.append(node.ipAddress);
+
+                             if (node.country != null)
+                                 sbInfo.append(' ').append(node.country);
+
+                             if (node.organization != null)
+                                 sbInfo.append(" (").append(node.organization).append(')');
+
+                             sbInfo.append('\n');
+                         }
+
                      }
-                     
                  }
-                 
+
                  expandedView.setTextViewText(R.id.text2, sbInfo.toString());
              }
              
