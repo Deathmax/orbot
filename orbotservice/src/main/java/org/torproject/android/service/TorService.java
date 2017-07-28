@@ -463,6 +463,12 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
         stopTor();
 
+        try {
+            unregisterReceiver(mAlarmReceiver);
+        } catch (IllegalArgumentException iae) {
+            // not registered yet
+        }
+
         try
         {
             mShell.close();
@@ -522,12 +528,6 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         catch (IllegalArgumentException iae)
         {
             //not registered yet
-        }
-
-        try {
-            unregisterReceiver(mAlarmReceiver);
-        } catch (IllegalArgumentException iae) {
-            // not registered yet
         }
     }
 
