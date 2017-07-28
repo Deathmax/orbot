@@ -241,6 +241,13 @@ android:enabled="true"
 android:title="@string/pref_disable_network_title"/>
 
 <CheckBoxPreference
+android:defaultValue="false"
+android:key="pref_hold_wakelock"
+android:summary="@string/pref_hold_wakelock_summary"
+android:enabled="true"
+android:title="@string/pref_hold_wakelock_title"/>
+
+<CheckBoxPreference
 android:defaultValue="false" 
 android:key="pref_transproxy_refresh"
 android:summary="@string/pref_transproxy_refresh_summary"

@@ -101,6 +101,7 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
 
     private TorControlConnection connWakeLock = null;
     private PowerManager.WakeLock wakeLock;
+    private PowerManager.WakeLock wakeLockPermanent;
     private String controlSocketPath;
     private boolean hasHiddenServices;
     private static final long MINUTE_INTERVAL = 60000L;
@@ -521,6 +522,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
         releaseWakeLock();
         if (alarmManager != null)
             alarmManager.cancel(alarmPendingIntent);
+        if (wakeLockPermanent.isHeld())
+            wakeLockPermanent.release();
 
         try {
             unregisterReceiver(mNetworkStateReceiver);
@@ -591,6 +594,9 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
             wakeLock = ((PowerManager) getSystemService(POWER_SERVICE))
                     .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TorHiddenServiceWakelock");
             wakeLock.setReferenceCounted(false);
+            wakeLockPermanent = ((PowerManager) getSystemService(POWER_SERVICE))
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TorWakeLock");
+            wakeLockPermanent.setReferenceCounted(false);
 
             appBinHome = getDir(TorServiceConstants.DIRECTORY_TOR_BINARY, Application.MODE_PRIVATE);
             appCacheHome = getDir(TorServiceConstants.DIRECTORY_TOR_DATA,Application.MODE_PRIVATE);
@@ -850,6 +856,10 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                 enableTransparentProxy();
             }
 
+            if (Prefs.holdWakeLock()) {
+                wakeLockPermanent.acquire();
+            }
+
             // Tor is running, update new .onion names at db
             ContentResolver mCR = getApplicationContext().getContentResolver();
             Cursor hidden_services = mCR.query(HS_CONTENT_URI, hsProjection, null, null, null);
@@ -917,6 +927,8 @@ public class TorService extends Service implements TorServiceConstants, OrbotCon
                     getString(R.string.unable_to_start_tor) + ": " + e.getMessage(),
                     ERROR_NOTIFY_ID, R.drawable.ic_stat_notifyerr);
             //stopTor();
+            if (wakeLockPermanent.isHeld())
+                wakeLockPermanent.release();
         }
     }
     

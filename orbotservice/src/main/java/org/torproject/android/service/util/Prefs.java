@@ -24,6 +24,7 @@ public class Prefs {
     private final static String PREF_USE_SYSTEM_IPTABLES = "pref_use_sys_iptables";
     private final static String PREF_USE_VPN = "pref_vpn";
     private final static String PREF_EXIT_NODES = "pref_exit_nodes";
+    private final static String PREF_HOLD_WAKELOCK = "pref_hold_wakelock";
     
     private static SharedPreferences prefs;
 
@@ -128,5 +129,10 @@ public class Prefs {
     public static void setExitNodes (String exits)
     {
     	putString(PREF_EXIT_NODES,exits);
+    }
+
+    public static boolean holdWakeLock ()
+    {
+        return prefs.getBoolean(PREF_HOLD_WAKELOCK, false);
     }
 }
